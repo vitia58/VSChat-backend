@@ -24,7 +24,7 @@ import { IdGeneratorModule } from 'src/id-generator/id-generator.module';
     PassportModule,
     IdGeneratorModule,
     JwtModule.register({
-      secret: "0864213579aZ",
+      secret: "d85jh73JF855j24",
       signOptions: { expiresIn: '365d' },
     }),
   ],
