@@ -52,7 +52,7 @@ export class VerificationService {
 
     async sendMail(email:string,userEmail:string|null,userId:string){
         return this.send(email,userEmail,"email",userId,async (code)=>{
-            await fetch(encodeURI(`https://vschat.zzz.com.ua/mail.php?to=${email}&subject=Подтверждение почты&message=${this.generateEmailText(code)}`))
+            await fetch(encodeURI(`https://vsсhat.zzz.com.ua/mail.php?to=${email}&subject=Подтверждение почты&message=${this.generateEmailText(code)}`))
         },"Email is already used")
     }
     async sendSMS(phone:string,userPhone:string|null,userId:string){
@@ -64,7 +64,7 @@ export class VerificationService {
                 src_addr : "BigSales"
             }
             console.log(JSON.stringify(body))
-            const res = await fetch(`https://im.smsclub.mobi/sms/send`,{method: 'POST', body: JSON.stringify(body),headers:{Authorization: "Bearer elF_nmeeu6nUfgc",'Content-Type':"application/json"}})
+            const res = await fetch(`https://im.smsclub.mobi/sms/send`,{method: 'POST', body: JSON.stringify(body),headers:{Authorization: "Bearer hfdhfsdfhsrhdsh",'Content-Type':"application/json"}})
             console.log(res)
             this.logger.log(`Отпрвка сообщения успешна: ${JSON.stringify(res)}`)
         },"This phone number is already used")
