@@ -6,6 +6,7 @@ import { Model } from 'mongoose';
 import { AuthService } from 'src/auth/auth.service';
 import { __DEV__ } from 'src/helpers/constant';
 import { Chat, ChatDocument } from 'src/models/Chat';
+import { Message, MessageDocument } from 'src/models/Message';
 import { Session, SessionDocument } from 'src/models/Session';
 import { User, UserDocument } from 'src/models/User';
 import { SessionsService } from 'src/sessions/sessions.service';
@@ -17,6 +18,7 @@ export class SocketGateway implements OnGatewayConnection,OnGatewayInit,OnModule
   constructor(@InjectModel(User.name) private readonly userModel:Model<UserDocument>,
   @InjectModel(Session.name) private readonly sessionModel:Model<SessionDocument>,
   @InjectModel(Chat.name) private readonly chatModel:Model<ChatDocument>,
+  @InjectModel(Message.name) private readonly messageModel:Model<MessageDocument>,
   private readonly authService:AuthService,
   private readonly sessionService:SessionsService,
   @Inject(forwardRef(() => SocketRouter))
@@ -42,25 +44,29 @@ export class SocketGateway implements OnGatewayConnection,OnGatewayInit,OnModule
     client.onmessage = async ({data})=>{
       const sessionData = await this.authService.decript(data.toString())
       // console.log(sessionData)
-      const id = sessionData["id"]
-      const session = await this.sessionModel.findById(id).exec()
-      if(session){
-        client.onmessage = this.getClientEvents(session.user+"",id)
-        client.onclose = await this.onlineListener(session.user,id)
-        const last = this.connections.get(id)
-        if(last)last.close()
-        this.connections.set(id,client)
-        this.send(client,"Authorized",id)
-        if(!__DEV__){
-          setInterval(()=>{
-            this.send(client,"1","1")
-          },50000)
-        }
-        this.sendNews(session,client)
-        // console.log(id)
-      }else{
+      const unauthorize = ()=>{
         this.send(client,"Unauthorized","error")
         client.close()
+      }
+      if(!sessionData)unauthorize()
+      else{
+        const id = sessionData["id"]
+        const session = await this.sessionModel.findById(id).exec()
+        if(session){
+          client.onmessage = this.getClientEvents(session.user+"",id)
+          client.onclose = await this.onlineListener(session.user,id)
+          const last = this.connections.get(id)
+          if(last)last.close()
+          this.connections.set(id,client)
+          this.send(client,"Authorized",id)
+          if(!__DEV__){
+            setInterval(()=>{
+              this.send(client,"1","1")
+            },50000)
+          }
+          this.sendNews(session,client)
+          // console.log(id)
+        }else unauthorize()
       }
     }
   }
@@ -110,12 +116,14 @@ export class SocketGateway implements OnGatewayConnection,OnGatewayInit,OnModule
     return async ({data}) => {
       if (data&&isJSON(data)) {
         const event:{event:string,data:any} = JSON.parse(data)
+        if(event.data==undefined)return;
         // console.log(event)
         // const session = await this.sessionModel.findById(sessionId).exec()
         switch (event.event) {
           case "Typping":
           case "ChatOpen":
           case "ChatClose":{
+            console.log(event)
             event.data = await getChat(event.data+"")
             if(!(event.data && event.data.users.find((u)=>userId==u+"")))break    //CHAT ACCESS FILTER
           }
@@ -136,7 +144,12 @@ export class SocketGateway implements OnGatewayConnection,OnGatewayInit,OnModule
             lastTypping.chat=chatId
             break;
           }case "ChatOpen":{
-            await this.changeChatOptions("opened","add",event.data,sessionId,userId)
+            const chat:ChatDocument = event.data
+            await this.changeChatOptions("opened","add",chat,sessionId,userId)
+            if(chat.lastMessage){
+              const lastMessage = await this.messageModel.findById(chat.lastMessage)
+              if(!lastMessage.readedBy.some(mu=>mu==userId))await this.socketRouter.sendToUser(userId,"UpdateChat",{id:chat._id,unreaded:0})
+            }
             break;
           }case "ChatClose":{
             await this.changeChatOptions("opened","remove",event.data,sessionId,userId)
@@ -151,19 +164,25 @@ export class SocketGateway implements OnGatewayConnection,OnGatewayInit,OnModule
 
   private async changeChatOptions(fieldName:"opened"|"typping",type:"add"|"remove",chat:ChatDocument|null,sessionId:string,userId:string){
     if(chat){
+      if(type=="add"){
+        const other = await this.chatModel.find({[fieldName]:{$in:[sessionId]}})
+        for (const el of other) {
+          await this.changeChatOptions(fieldName,"remove",el,sessionId,userId)
+        }
+      }
       const last = chat[fieldName].filter(s=>s.length>0)
       const field = (type=="add"
         ?[...new Set([...last,sessionId])]
         :this.removeFromArray([...last],sessionId))
       if(field.length!=last.length){
-        this.socketRouter.sendToChat(chat,this.socketRouter.userFilter(userId),"UpdateChat",{id:chat._id+"",[fieldName]:await this.transformers.getUsersFromSessions(field)})
+        await this.socketRouter.sendToChat(chat,this.socketRouter.userFilter(userId),"UpdateChat",{id:chat._id+"",[fieldName]:await this.transformers.getUsersFromSessions(field)})
         await this.chatModel.findByIdAndUpdate(chat._id,{[fieldName]:field},{new:true})
       }
     }
   }
 
   send(client:WebSocket,event:string,data:any){
-    client.send(JSON.stringify({event,data}))
+    if(client)client.send(JSON.stringify({event,data}))
   }
 
   private removeFromArray<T>(array:T[],value:T){

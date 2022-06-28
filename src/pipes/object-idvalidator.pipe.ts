@@ -7,7 +7,7 @@ export class ObjectIdvalidatorPipe implements PipeTransform {
   async transform(value: any, metadata: ArgumentMetadata) {
     // this.logger.log(value,metadata)
     if(metadata.type==="param"){
-      if(!Types.ObjectId.isValid(value))throw new BadRequestException("Id isn't valid")
+      if(!Types.ObjectId.isValid(value.split("&",2)[0]))throw new BadRequestException("Id isn't valid")
     }else if(metadata.type=="body"){
       const object = plainToClass(metadata.metatype, value);
       const errors = await validate(object,{whitelist: true, forbidNonWhitelisted: true});

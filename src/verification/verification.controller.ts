@@ -24,7 +24,7 @@ export class VerificationController {
     @Post("sendSMS")
     @UseGuards(JwtAuthGuard)
     async sendSMS(@Body(new ObjectIdvalidatorPipe()) email:CSendSMSDTO,@GetUser() user:CUserDTO){
-        return await this.service.sendSMS(email.phone,user.phone,user.id)
+        return await this.service.sendSMS(email.phone.startsWith("38")?email.phone:`38${email.phone}`,user.phone.startsWith("38")?user.phone:`38${user.phone}`,user.id)
     }
     @Post("verifySMS")
     @UseGuards(JwtAuthGuard)

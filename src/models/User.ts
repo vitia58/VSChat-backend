@@ -1,6 +1,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 import { FILES_URL } from 'src/helpers/constant';
+import { hideTransform } from 'src/helpers/other.helper';
 
 export type UserDocument = User & Document;
 
@@ -20,10 +21,10 @@ export class User {
   @Prop({default:"none"})
   email: string;
 
-  @Prop({default:"none"})
+  @Prop({default:"none",transform:(v:string)=>`+${v}`})
   phone: string;
 
-  @Prop({transform:(v:string)=>v.replace("public_html/", `${FILES_URL}/`)})
+  @Prop({transform:(v:string)=>`${FILES_URL}/${v}`})
   image: string;
 
   @Prop({transform:(v:string)=>`#${v}`})
@@ -32,13 +33,12 @@ export class User {
   @Prop({default:false})
   hiden:boolean
 
-  @Prop({transform:()=>undefined})
+  @Prop(hideTransform)
   __v:number
-
-  @Prop({transform:()=>undefined})
-  createdAt: Date;
-  @Prop({transform:()=>undefined})
-  updatedAt: Date;
+  @Prop(hideTransform)
+  createdAt: number;
+  @Prop(hideTransform)
+  updatedAt: number;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

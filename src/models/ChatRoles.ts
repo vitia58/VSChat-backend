@@ -1,6 +1,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 import { FILES_URL } from 'src/helpers/constant';
+import { hideTransform } from 'src/helpers/other.helper';
 import { Chat } from './Chat';
 import { User } from './User';
 
@@ -22,7 +23,7 @@ export class ChatRoles {
   @Prop({enum: ['common', 'admin'], default: 'common',})
   roleType:'common'|'admin'
 
-  @Prop({transform:()=>undefined})
+  @Prop(hideTransform)
   __v:number
 }
 

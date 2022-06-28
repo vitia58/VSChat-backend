@@ -10,6 +10,8 @@ import { Message, MessageSchema } from 'src/models/Message';
 import { ChatModule } from 'src/chat/chat.module';
 import { NotificationsController } from './notifications.controller';
 import { UserModule } from 'src/user/user.module';
+import { SocketModule } from 'src/socket/socket.module';
+import { Notification, NotificationSchema } from 'src/models/Notification';
 
 @Module({
   imports: [
@@ -17,6 +19,7 @@ import { UserModule } from 'src/user/user.module';
       { name: Message.name, schema: MessageSchema },
       { name: Session.name, schema: SessionSchema },
       { name: Chat.name, schema: ChatSchema },
+      { name: Notification.name, schema: NotificationSchema },
       // { name: User.name, schema: UserSchema }
     ]),
     ConfigModule,
@@ -29,7 +32,8 @@ import { UserModule } from 'src/user/user.module';
       inject: [ConfigService],
     }),
     forwardRef(()=>ChatModule),
-    UserModule
+    UserModule,
+    SocketModule
   ],
   providers: [NotificationsService],
   exports:[NotificationsService],

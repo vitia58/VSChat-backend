@@ -6,6 +6,7 @@ import { GetUser } from 'src/decorators/user.decorator';
 import { ObjectIdvalidatorPipe } from 'src/pipes/object-idvalidator.pipe';
 import { ChangeAboutDTO } from './dto/changeAboutDTO';
 import { ChangeColorDTO } from './dto/ChangeColorDTO';
+import { ChangePrivacyDTO } from './dto/ChangePrivacyDTO';
 import { ChangeUserNameDTO } from './dto/changeUserNameDTO';
 import { ProfileService } from './profile.service';
 
@@ -54,5 +55,11 @@ export class ProfileController {
     @UseGuards(JwtAuthGuard)
     changeUserName(@Body(new ObjectIdvalidatorPipe()) changeUserName:ChangeUserNameDTO,@GetUser() user:CUserDTO){
         return this.service.changeUserName(user,changeUserName)
+    }
+    
+    @Post("privacy")
+    @UseGuards(JwtAuthGuard)
+    changePrivacy(@Body(new ObjectIdvalidatorPipe()) changePrivacy:ChangePrivacyDTO,@GetUser() user:CUserDTO){
+        return this.service.changePrivacy(changePrivacy,user)
     }
 }

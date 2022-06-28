@@ -17,33 +17,34 @@ export class SocketRouter {
     private readonly userService: UserService,
     ){}
     
-    async sendToSessions<T extends keyof EventDataType>(sessions:string[],event:T,data:EventDataType[T]){
+    async sendToSessions<T extends keyof EventDataType>(sessions:SessionDocument[],event:T,data:EventDataType[T]){
       let is = false;
       for (const session of sessions) {
-        const con = this.socketGateway.connections.get(session);
-        if(con){
-          this.socketGateway.send(con,event,data)
-          is=true
-        }else{
-          const s = await this.sessionModel.findById(session).exec()
-          await s.updateOne({deliverySocketBuffer:[...s.deliverySocketBuffer,JSON.stringify({event,data})]}).exec()
+        if(session){
+          const con = this.socketGateway.connections.get(session._id+"");
+          if(con){
+            this.socketGateway.send(con,event,data)
+            is=true
+          }else{
+            await this.addWithCompress(session,JSON.stringify({event,data}))
+          }
         }
       }
       return is
     }
 
     private async getSessions(userID:string){
-      return await this.sessionModel.find({user:userID}).exec()
+      return this.sessionModel.find({user:userID}).exec()
     }
 
     async sendToUser<T extends keyof EventDataType>(user:string,event:T,data:EventDataType[T]){
       const sessions = await this.getSessions(user)
-      return this.sendToSessions(sessions.map(s=>s.id+""),event,data)
+      return await this.sendToSessions(sessions,event,data)
     }
 
     async sendToChatById<T extends keyof EventDataType>(chatId:string,filter:any,event:T,data:EventDataType[T]){
       const chat = await this.chatModel.findById(chatId).exec()
-      this.sendToChat(chat,filter,event,data)
+      await this.sendToChat(chat,filter,event,data)
       return chat
     }
 
@@ -51,51 +52,110 @@ export class SocketRouter {
       return (u:string)=>userID!=u
     }
 
-    sendToChat<T extends keyof EventDataType>(chat:Chat,filter:(u:string)=>boolean|Promise<boolean>,event:T,data:EventDataType[T]){
+    async sendToChat<T extends keyof EventDataType>(chat:Chat,filter:(u:string)=>boolean|Promise<boolean>,event:T,data:EventDataType[T]){
       if(chat){
-        chat.users.map(u=>u+"").filter(filter||(()=>true)).forEach(user=>{
-            this.sendToUser(user+"",event,data)
-        })
+        await Promise.all(chat.users.map(u=>u+"").filter(filter||(()=>true)).map(user=>
+          this.sendToUser(user+"",event,data)
+        ))
       }
     }
 
     async sendToChatWithAccess<T extends keyof EventDataType>(chat:Chat,event:T,publicData:(u:string)=>Promise<any>,userOwner:string,privateData:any){
       if(chat){
-        chat.users.map(u=>u+"").forEach(async user=>{
+        await Promise.all(chat.users.map(u=>u+"").map(async user=>{
           const public1 = await publicData(user)
-          this.sendToUser(
+          await this.sendToUser(
             user,
             event,
             user==userOwner
               ?{...public1,...privateData}
               :public1
           )
-        })
+        }))
       }
       return chat
     }
 
-    sendToUsers<T extends keyof EventDataType>(users:string[]|Set<string>,event:T,data:EventDataType[T]){
-      users.forEach((u:string)=>
+    async sendToUsers<T extends keyof EventDataType>(users:string[]|Set<string>,event:T,data:EventDataType[T]){
+      await Promise.all([...users].map((u:string)=>
         this.sendToUser(u,event,data)
-      )
+      ))
     }
     
     async sendToAllRelatedUsers<T extends keyof EventDataType>(userId:string,event:T,data:EventDataType[T]){
       const send = await this.userService.getRelatedUsers(userId)
-      this.sendToUsers(send,event,data)
+      await this.sendToUsers(send,event,data)
     }
 
     async sendToUserWithFilter<T extends keyof EventDataType>(userId:string,filter:(session:SessionDocument)=>Promise<boolean>,event:T,data:EventDataType[T]){
       const sessions = await this.getSessions(userId)
       const filteredSessions = await Promise.all(sessions.filter(filter))
-      this.sendToSessions(filteredSessions.map((v)=>v._id),event,data)
+      await this.sendToSessions(filteredSessions,event,data)
     }
 
     async logout(sessionId:string){
       const socket = this.socketGateway.connections.get(sessionId)
       this.socketGateway.send(socket,"Logout",{})
-      socket.close()
+      if(socket)socket.close()
+    }
+    private async addWithCompress(session:SessionDocument,data:string){
+      const {deliverySocketBuffer} = session
+      const obj = [
+        {
+          NewUser:{},
+          NewChat:{},
+          NewMessage:{},
+          UpdateMessage:{},
+          UpdateUser:{},
+          UpdateChat:{},
+          RemoveMessage:{},
+          RemoveUser:{},
+          RemoveChat:{},
+          RemovePush:{}
+        },...(deliverySocketBuffer??[]),data]
+      .reduce((p:{
+        NewUser: {};
+        NewChat: {};
+        NewMessage: {};
+        UpdateMessage: {};
+        UpdateUser: {};
+        UpdateChat: {};
+        RemoveMessage: {};
+        RemoveUser: {};
+        RemoveChat: {};
+        RemovePush: {};
+      },c:string)=>{
+        const {event,data:{id,_id,...params}}:{event:keyof EventDataType,data:any} = JSON.parse(c)
+        if(event=="RemovePush")return {...p,RemovePush:{...p.RemovePush,[id]:{}}}
+        // if(!["UpdateMessage","UpdateUser","UpdateChat"].includes(event))return p
+        if(event.startsWith("New")){
+          return {...p,[event]:{...p[event],[event=="NewUser"?_id:id]:params}}
+        }
+        if(event.startsWith("Update")){
+          const n = event.replace("Update","New")
+          if(p[n][id]){
+            return {...p,[n]:{...p[n],[id]:{...(p[n][id]??{}),...params}}}
+          }else return {...p,[event]:{...p[event],[id]:params}}
+        }
+        if(event.startsWith("Remove")){
+          const newEvent = event.replace("Remove","New")
+          if(p[newEvent][id]){
+            return {...p,[newEvent]:{...p[newEvent],[id]:undefined}}
+          }
+          const updateEvent = event.replace("Remove","Update")
+          if(p[updateEvent][id]){
+            return {...p,[updateEvent]:{...p[updateEvent],[id]:undefined}}
+          }
+          return {...p,[event]:{...p[event],[id]:{}}}
+        }
+      })
+      const update = Object.keys(obj).map(event=>
+        Object.keys(obj[event]).map(k=>{
+          const data = {event,data:{[event=="NewUser"?"_id":"id"]:k,...obj[event][k]}}
+          return JSON.stringify(data)
+        })
+      ).reduce((p,c)=>[...p,...c])
+      await session.updateOne({deliverySocketBuffer:update}).exec()
     }
 }
 
@@ -111,4 +171,6 @@ type EventDataType = {
   NewChat:CChatResponse
   UpdateChat:{[K in keyof CChatResponse]?:CChatResponse[K]}&{id:string}
   RemoveChat:{id:string}
+
+  RemovePush:{id:string}
 }

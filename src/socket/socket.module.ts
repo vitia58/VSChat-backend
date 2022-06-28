@@ -16,7 +16,7 @@ import { SocketRouter } from './socket.router';
     imports:[MongooseModule.forFeature([
         {name:Session.name,schema:SessionSchema},
         {name:User.name,schema:UserSchema},
-        //{name:Message.name,schema:MessageSchema},
+        {name:Message.name,schema:MessageSchema},
         {name:Chat.name,schema:ChatSchema}
       ]),
       AuthModule,

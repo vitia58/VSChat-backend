@@ -13,6 +13,9 @@ import { TransformersService } from 'src/transformers/transformers.service';
 import { ChangeAboutDTO } from './dto/changeAboutDTO';
 import { ChangeColorDTO } from './dto/ChangeColorDTO';
 import { ChangeUserNameDTO } from './dto/changeUserNameDTO';
+import * as mine from 'mime-types'
+import { ChangePrivacyDTO } from './dto/ChangePrivacyDTO';
+import { runThreads } from 'src/helpers/other.helper';
 
 @Injectable()
 export class ProfileService {
@@ -28,11 +31,12 @@ export class ProfileService {
     ){}
     private readonly logger = new Logger(ProfileService.name);
     async getMyProfile(user:CUserDTO){
+        // console.log(user)
         const {color,userName,image,online} = await this.transormers.userTransformByAuth(user)
-        const {about} = await this.getOrGenerate(user.id)
-        const verifications = await this.verificationModel.find({user:user._id}).exec()
-        const newEmail = verifications.find(e=>e.target=="email")??{target:null}.target;
-        const newPhone = verifications.find(e=>e.target=="phone")??{target:null}.target;
+        const {about,privacyEmail,privacyPhone} = (await this.getOrGenerate(user.id)).toObject<Profile>()
+        const verifications = await this.verificationModel.find({user:user.id}).exec()
+        const {target:newEmail} = verifications.find(e=>e.target=="email")??{target:null};
+        const {target:newPhone} = verifications.find(e=>e.target=="phone")??{target:null};
         const email =  newEmail || user.email
         const emailVerified = user.email!="none"
         const phone =  newPhone || user.phone
@@ -46,20 +50,22 @@ export class ProfileService {
             email,
             emailVerified,
             phone,
-            phoneVerified
+            phoneVerified,
+            privacyEmail,
+            privacyPhone
         }
     }
     async getOtherProfile(id:string,user:CUserDTO){
         console.log(id,user)
         const {color,userName,image,email,phone,online} = await this.transormers.userTransformById(id)
-        const {about} = await this.getOrGenerate(id)
+        const {about,privacyEmail,privacyPhone} = (await this.getOrGenerate(id)).toObject()
         return {
             color,
             userName,
             about,
             image,
-            email,
-            phone,
+            email:privacyEmail&&email!="none"?email:undefined,
+            phone:privacyPhone&&phone!="none"?phone:undefined,
             online
         }
     }
@@ -71,7 +77,8 @@ export class ProfileService {
 
     async changeAbout(user:CUserDTO,changeAboutDTO:ChangeAboutDTO){
         try {
-            await this.profileModel.findOneAndUpdate({user:user.id},changeAboutDTO,{new:true}).exec()
+           (await this.getOrGenerate(user.id)).updateOne(changeAboutDTO).exec()
+            // await this.profileModel.findOneAndUpdate({user:user.id},changeAboutDTO,{new:true}).exec()
         } catch (error) {
             this.logger.error(error)
             throw new BadRequestException(error)
@@ -83,21 +90,31 @@ export class ProfileService {
         const color = c.color.substring(1)
         if(user.color!=color){
             console.log(c,user)
-            if(FTP_ENABLED)this.documents.generateUserProfilePhoto(user.userName,user.login,color)
+            if(FTP_ENABLED&&user.image.endsWith("logos/default.png"))this.documents.generateUserProfilePhoto(user.userName,user.login,color)
             // console.log(image)
-            await this.userModel.findByIdAndUpdate(user._id,{color})
-            await this.socket.sendToAllRelatedUsers(user.id,"UpdateUser",{id:user.id,color})
+            this.userModel.findByIdAndUpdate(user.id,{color}).exec()
+            this.socket.sendToAllRelatedUsers(user.id,"UpdateUser",{id:user.id,color})
         }
         return {result:"Color changed"}
     }
 
     async uploadUserImage(file: Express.Multer.File,user:CUserDTO){
-        // console.log(file,user)
+        console.log(file,user)
+        console.log("uploadUserImage")
         if(FTP_ENABLED){
-            const path = await this.documents.uploadImage(file,`public_html/users/${user.login}/logos/${new Date().getTime()}.png`)
-            // console.log(path)
-            this.userModel.findByIdAndUpdate(user._id,{image:path}).exec()
-            await this.socket.sendToAllRelatedUsers(user.id,"UpdateUser",{id:user.id,image:path})
+            console.log("ftp enabled")
+            const path =`users/${user.login}/logos/${new Date().getTime()}.${mine.extension(file.mimetype)}`
+            await runThreads(
+                async ()=>{
+                    await this.documents.uploadFile(file,path)
+                },
+                async ()=>{
+                    await this.userModel.findByIdAndUpdate(user.id,{image:path}).exec()
+                },
+                async ()=>{
+                    await this.socket.sendToAllRelatedUsers(user.id,"UpdateUser",{id:user.id,image:path})
+                }
+            )
         }
         return {result:"Success"}
     }
@@ -106,7 +123,7 @@ export class ProfileService {
     //   this.logger.log(user,changeUserName)
     const {userName} = changeUserName
       try {
-          await this.userModel.findByIdAndUpdate(user._id,{userName},{new:true}).exec()
+          await this.userModel.findByIdAndUpdate(user.id,{userName},{new:true}).exec()
       } catch (error) {
           this.logger.error(error)
           throw new BadRequestException(error)
@@ -114,10 +131,20 @@ export class ProfileService {
       await this.socket.sendToAllRelatedUsers(user.id,"UpdateUser",{id:user.id,userName})
       return {result:"Success"}
     }
+    async changePrivacy(changePrivacy: ChangePrivacyDTO, user: CUserDTO){
+        const {value,type} = changePrivacy
+        try {
+            (await this.getOrGenerate(user.id)).updateOne({[type=="email"?"privacyEmail":"privacyPhone"]:value}).exec()
+         } catch (error) {
+             this.logger.error(error)
+             throw new BadRequestException(error)
+         }
+         return {result:"Success"}
+    }
 
     private async getOrGenerate(userId:string){
         const profile = await this.profileModel.findOne({user:userId}).exec()
-        if(!profile) return await new this.profileModel({user:userId}).save()
-        else return profile
+        if(!profile) return new this.profileModel({user:userId}).save()
+        return profile
     }
 }

@@ -9,20 +9,6 @@ import { User, UserSchema } from 'src/models/User';
 
 @Module({
   imports:[
-    MailerModule.forRoot({
-      transport: 'smtps://monopoly2vs@gmail.com:vitiandslava@smtp.gmail.com',
-      defaults: {
-        from: '"vitia" <monopoly2vs@gmail.com>',
-      },
-      
-      template: {
-        dir: __dirname + '/templates',
-        adapter: new HandlebarsAdapter(),
-        options: {
-          strict: true,
-        },
-      },
-    }),
     MongooseModule.forFeature([
       { name: Verification.name, schema: VerificationSchema },
       // { name: Chat.name, schema: ChatSchema },

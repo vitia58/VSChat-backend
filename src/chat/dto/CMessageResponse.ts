@@ -5,6 +5,6 @@ type CMessageResponse = {
     user: string;
     readed?: boolean|undefined;
     chat:string;
-    file?:string;
+    file:string[];
     fileType?:"voice"|"image"|"file"
 }

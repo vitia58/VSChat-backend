@@ -16,15 +16,15 @@ export class JwtStrategy extends PassportStrategy(Strategy){
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: "d85jh73JF855j24",
+      secretOrKey: "0864213579aZ",
     });
   }
   async validate(payload:any):Promise<CUserDTO>{
-    // this.logger.log(payload)
+    // console.log(payload)
     const session = await this.sessionModel.findById(payload.id).exec()
     // this.logger.log(user)
     if(session){
-      const user = (await this.userModel.findById(session.user).exec()).toObject()
+      const user:User = (await this.userModel.findById(session.user).exec()).toObject()
       // console.log(user)
       return {...user,session,id:user._id+""}
     }else throw new UnauthorizedException()

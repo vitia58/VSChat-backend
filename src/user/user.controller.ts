@@ -21,6 +21,7 @@ export class UserController {
     @Get("find/:name")
     @UseGuards(JwtAuthGuard)
     findByName(@Param("name") name:string,@GetUser() user:CUserDTO){
+        console.log(name,user)
         return this.service.findByName(name,user)
     }
 

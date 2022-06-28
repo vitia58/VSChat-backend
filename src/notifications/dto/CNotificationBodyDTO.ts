@@ -1,4 +1,4 @@
-import { IsMongoId, IsString } from 'class-validator';
+import { IsMongoId, IsOptional, IsString } from 'class-validator';
 export class CNotificationBodyDTO {
   @IsMongoId()
   readonly title:string
@@ -6,4 +6,7 @@ export class CNotificationBodyDTO {
   readonly message:string
   @IsString()
   readonly image:string
+  @IsString()
+  @IsOptional()
+  readonly bigImage?:string
 }

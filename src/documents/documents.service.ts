@@ -7,7 +7,7 @@ import { generateAvatar } from "ui-avatars"
 import { InjectModel } from '@nestjs/mongoose';
 import { File, FileDocument } from 'src/models/File';
 import { Model } from 'mongoose';
-import { FILES_URL, FTP_ENABLED } from 'src/helpers/constant';
+import { FILES_URL, ftpConfig, FTP_ENABLED } from 'src/helpers/constant';
 import * as path from 'path'
 import { CUserDTO } from 'src/auth/dto/CUserDTO';
 import * as Client from 'ftp'
@@ -34,24 +34,7 @@ export class DocumentsService {
                     color: this.getColor(color),
                     rounded: true
                 })
-                if(FTP_ENABLED)this.getFTP((ftp:Client) => {
-                    ftp.mkdir(this.getParent(path), true, () => {
-                        ftp.list(this.getParent(path), (e, l) => {
-                            const ee = path.split("/").pop()
-                            if (replace || !(e || l.find(e => e.name == ee))) {
-                                get(link, async (response) => {
-                                    // this.logger.log(link)
-                                    // const buffer = await this.stream2buffer(response)
-                                    ftp.put(response, path, async e => {
-                                        e && console.log(e)
-                                    })
-                                    // const j = await Jimp.read(buffer)
-                                    // console.log((j.getPixelColor(128, 5)).toString(16).substring(0, 6))
-                                })
-                            }
-                        })
-                    });
-                })
+                this.uploadImageFromUrl(path,link,replace)
             }
         })
         return [encodeURI(path),color]
@@ -62,67 +45,73 @@ export class DocumentsService {
         return randHex()+randHex()+randHex()
     }
 
-    getColor(color:string){
-        const red = parseInt(color.substr(0,2),16)
-        const green = parseInt(color.substr(2,2),16)
-        const blue = parseInt(color.substr(4,2),16)
+    getColor(c:string){
+        const color = 
+            c.length>=6
+                ?c.substr(0,6)
+            :c.length>=3
+                ?c.substr(0,3)
+            :"000"
+        const getHex = (n:number)=>{
+            const b = color.length==6?2:1
+            const c = parseInt(color.substr(n*b,(n+1)*b),16)
+            return c*(b==2?1:17)
+        }
+        const red = getHex(0)
+        const green = getHex(1)
+        const blue = getHex(2)
         return red*0.299+green*0.587+blue*0.114>127?"000":"fff"
     }
 
-    createFolder(file: string) {
-        const dir = this.getParent(file)
-        if (!fs.existsSync(dir)) {
-            fs.mkdirSync(dir, {
-                recursive: true
-            });
-        }
+    async createFolder(path: string,ftp:Client) {
+        console.log("folder create")
+        await new Promise(e=>ftp.mkdir(this.getParent(path), true, e))
     }
     private getParent(file: string) {
         return path.dirname(file)
     }
     generateUserProfilePhoto(userName: string, userLogin: string,color:string='random') {
-        const path = `public_html/users/${userLogin}/logos/default.png`
+        const path = `users/${userLogin}/logos/default.png`
         return this.generateImage(userName, path,color,true)
     }
     pathToUrl(path: string) {
-        return path.replace("public_html/", `${FILES_URL}/`)
+        return `${FILES_URL}/${path}`
     }
     async checkExsits(file:string){
         const res = await fetch(encodeURI(this.pathToUrl(file)))
         return res.status!=404
     }
+    uploadImageFromUrl(path: string,link:string,replace:boolean=false){
+        if(FTP_ENABLED)this.getFTP(async (ftp:Client) => {
+            await this.createFolder(path,ftp)
+            ftp.list(this.getParent(path), (e, l) => {
+                const ee = path.split("/").pop()
+                if (replace || !(e || l.find(e => e.name == ee))) {
+                    get(link, async (response) => {
+                        ftp.put(response, path, async e => {
+                            e && console.log(e)
+                        })
+                    })
+                }
+            })
+        })
+    }
     async test() {
 
     }
-    async uploadImage(file: Express.Multer.File,path:string){
+    async uploadFile(file: Express.Multer.File,path:string){
         const ftp = await new Promise(this.getFTP)
+        await this.createFolder(path,ftp)
         ftp.rename(file.path,path,this.logger.error)
         return path
     }
     async getFTP(callback:(ftp:Client)=>void){
+        console.log(3121)
         const ftp = new Client();
-        ftp.connect({
-            'host': 'files.000webhost.com',
-            'user': 'vschat-online',
-            'password': 'VitiaSlavaChat',
-        })
-        ftp.on("ready",()=>callback(ftp))
+        ftp.connect(ftpConfig)
+        ftp.on("ready",()=>{console.log(123);callback(ftp)})
+        ftp.on("error",console.log)
     }
-    async checkAccess(fileName: string, user: CUserDTO) {
-        const file = await this.fileModel.findOne({ fileName }).exec()
-        return file.users.find((u) => user._id + "" == u + "")
-    }
-    // async stream2buffer(stream: NodeJS.ReadableStream): Promise<Buffer> {
-    //     return new Promise<Buffer>((resolve, reject) => {
-
-    //         const _buf = Array<any>();
-
-    //         stream.on("data", chunk => _buf.push(chunk));
-    //         stream.on("end", () => resolve(Buffer.concat(_buf)));
-    //         stream.on("error", err => reject(`error converting stream - ${err}`));
-
-    //     });
-    // } 
     async getFile(req: string, response: Response) {
         let path = "upload/" + req
         // console.log(req)

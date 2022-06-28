@@ -5,6 +5,6 @@ type CUserResponse = {
     image: string;
     online:boolean|number;
     color:string
-    phone:string;
-    email:string
+    phone?:string;
+    email?:string
   }

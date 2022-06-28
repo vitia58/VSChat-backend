@@ -11,6 +11,7 @@ import { Session, SessionSchema } from 'src/models/Session';
 import { DocumentsModule } from 'src/documents/documents.module';
 import { VerificationModule } from 'src/verification/verification.module';
 import { IdGeneratorModule } from 'src/id-generator/id-generator.module';
+import { ConfigModule } from '@nestjs/config';
 
 @Module({
   imports: [
@@ -22,9 +23,10 @@ import { IdGeneratorModule } from 'src/id-generator/id-generator.module';
     UserModule,
     DocumentsModule,
     PassportModule,
+    ConfigModule,
     IdGeneratorModule,
     JwtModule.register({
-      secret: "d85jh73JF855j24",
+      secret: "0864213579aZ",
       signOptions: { expiresIn: '365d' },
     }),
   ],

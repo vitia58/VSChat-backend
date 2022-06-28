@@ -1,6 +1,7 @@
-import { Body, Controller, Delete, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Query, Req, UploadedFile, UploadedFiles, UseGuards } from '@nestjs/common';
 import { CUserDTO } from 'src/auth/dto/CUserDTO';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { UploadFile } from 'src/decorators/CustomFileInterceptor';
 import { GetUser } from 'src/decorators/user.decorator';
 import { ObjectIdvalidatorPipe } from 'src/pipes/object-idvalidator.pipe';
 import { ChatAccess, ChatGuard } from './chat.guard';
@@ -14,6 +15,7 @@ import { CDeleteChatDTO } from './dto/CDeleteChatDTO';
 import { CDeleteMessageDTO } from './dto/CDeleteMessageDTO';
 import { CRemoveUserToChatDTO } from './dto/CRemoveUserToChatDTO';
 import { CSendMessageDTO } from './dto/CSendMessageDTO';
+import { CUploadFileDTO } from './dto/CUploadFileDTO';
 
 @Controller('chat')
 @UseGuards(JwtAuthGuard,ChatGuard)
@@ -23,6 +25,12 @@ export class ChatController {
     @ChatAccess()
     send(@Body(new ObjectIdvalidatorPipe()) message:CSendMessageDTO,@GetUser() user:CUserDTO){
         return this.service.send(message,user)
+    }
+    @Post("uploadFile")
+    @UploadFile({typeFile:'all',fieldName:'file'})
+    uploadFile(@Body(new ObjectIdvalidatorPipe()) upload:CUploadFileDTO,@GetUser() user:CUserDTO,@UploadedFile() file: Express.Multer.File){
+        console.log(upload,user,file)
+        return this.service.uploadFile(upload,user,file)
     }
     @Post("create")
     create(@Body(new ObjectIdvalidatorPipe()) chat:CCreateChatDTO,@GetUser() user:CUserDTO){
@@ -41,7 +49,8 @@ export class ChatController {
     @Get("messages/:chat")
     @ChatAccess()
     getChatMessages(@Param("chat",new ObjectIdvalidatorPipe()) id:string,@GetUser() user:CUserDTO,@Query() q){
-        return this.service.getChatMessages(id,user,(q.skip||null),(q.newest||null))
+        const chat = id.split("&")
+        return this.service.getChatMessages(chat[0],user,(chat.length>1&&+chat[1].split("=",2)[1]||null),(chat.length>2&&+chat[2].split("=",2)[1]||null))
     }
     @Get("info/:chat")
     @ChatAccess()
@@ -93,7 +102,7 @@ export class ChatController {
         return this.service.readAll(chatAction,user)
     } 
     @ChatAccess()
-    @Delete("chat")
+    @Post("deleteChat")
     deleteChat(@Body(new ObjectIdvalidatorPipe()) deleteChat:CDeleteChatDTO,@GetUser() user:CUserDTO){
         return this.service.deleteChat(deleteChat,user)
     }

@@ -14,11 +14,12 @@ import { SessionsModule } from 'src/sessions/sessions.module';
 import { NotificationsModule } from 'src/notifications/notifications.module';
 import { TransformersModule } from 'src/transformers/transformers.module';
 import { ChatRolesModule } from 'src/chat-roles/chat-roles.module';
+import { File, FileSchema } from 'src/models/File';
 
 @Module({
   imports: [MongooseModule.forFeature([
     {name:Session.name,schema:SessionSchema},
-    // {name:User.name,schema:UserSchema},
+    { name:File.name, schema:FileSchema},
     { name: Message.name, schema: MessageSchema },
     { name: Chat.name, schema: ChatSchema }
   ]),

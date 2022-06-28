@@ -1,38 +1,24 @@
 import { UnsupportedMediaTypeException, UseInterceptors } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
-import { extname } from 'path';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import * as FTPStorage from 'multer-ftp'
-import { FTP_ENABLED } from 'src/helpers/constant';
-export function UploadFile(options:{fieldName?: string,upload?:string,typeFile?:"all"|"image"|"text"}):MethodDecorator{
+import { ftpConfig, FTP_ENABLED } from 'src/helpers/constant';
+import * as mine from 'mime-types'
+export function UploadFile(options:{fieldName?: string,typeFile?:"all"|"image"|"text",amount?:number}):MethodDecorator{
   const fieldName = options.fieldName||"file"
   const typeFile = options.typeFile||"all"
-  const upload = options.upload||
-  typeFile=="all"?"other":
-    typeFile=="image"?"images":"texts"
-  
+  const amount = options.amount||1
   if(!FTP_ENABLED)return UseInterceptors()
-  else return UseInterceptors(FileInterceptor(fieldName, {
+  const localOptions = {
     storage: new FTPStorage({
-      basepath: '/tmp/'+upload,
       destination: function (req, file, options, callback) {
+        console.log(file)
         const valid = typeFile==="all"?null:
         file.mimetype.startsWith(typeFile+"/")?null:new UnsupportedMediaTypeException("Please enter "+typeFile+" here")
-        callback(valid, '/tmp/'+Date.now()+extname(file.originalname));
+        callback(valid, 'tmp/'+Date.now()+"."+mine.extension(file.mimetype));
       },
-      ftp: {
-        host: 'files.000webhost.com',
-        user: 'vschat-online',
-        password: 'VitiaSlavaChat'
-      }
+      ftp: ftpConfig
     })
-    // diskStorage({
-    //   destination: './tmp/'+upload,
-    //   filename: (req, file, cb) => {
-    //     const valid = typeFile==="all"?null:
-    //       file.mimetype.startsWith(typeFile+"/")?null:new UnsupportedMediaTypeException("Please enter "+typeFile+" here")
-    //     cb(valid, Date.now()+extname(file.originalname));
-    //   },
-    // }),
-    // dest: './tmp/'+upload,
-  }))
+  }
+  if(amount==1)return UseInterceptors(FileInterceptor(fieldName, localOptions))
+  if(amount>1)return UseInterceptors(FilesInterceptor(fieldName, amount, localOptions))
 }

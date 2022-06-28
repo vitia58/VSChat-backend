@@ -21,7 +21,7 @@ export class ChatGuard implements CanActivate {
     const chatField = this.reflector.get<string>('chat', context.getHandler());
     if(!chatField)return true
 
-    const chatId = request.body[chatField]||request.params[chatField]
+    const chatId = request.body[chatField]||request.params[chatField].split("&")[0]
     // console.log(request,request.body[chatField],request.params[chatField])
     if(chatId&&chatId!==undefined&&isMongoId(chatId)){
       const chat = await this.chatModel.findById(chatId).exec()

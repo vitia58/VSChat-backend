@@ -1,19 +1,17 @@
-import { MailerService } from '@nestjs-modules/mailer';
 import { BadRequestException, ConflictException, Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import fetch from 'node-fetch';
 import { CUserDTO } from 'src/auth/dto/CUserDTO';
 import { __DEV__ } from 'src/helpers/constant';
+import { runThreads } from 'src/helpers/other.helper';
 import { User, UserDocument } from 'src/models/User';
 import { Verification, VerificationDocument } from 'src/models/Verification';
-import { CSendEmail } from './dto/CSendEmailDTO';
 import { CVerifyDTO } from './dto/CVerifyDTO';
 
 @Injectable()
 export class VerificationService {
     constructor(
-        private readonly mailerService: MailerService,
         @InjectModel(Verification.name) private readonly verificationModel:Model<VerificationDocument>,
         @InjectModel(User.name) private readonly userModel:Model<UserDocument>
     ) {}
@@ -23,14 +21,20 @@ export class VerificationService {
         else if(!await this.checkExist(targetName,target)){
 
             const code = this.generateCode()
-            try{
-                await send(code)
-            }catch(e){
-                this.logger.error(e)
-                throw new BadRequestException("Sending error")
-            }
-            await this.verificationModel.deleteOne({user:userId,type:targetName}).exec()
-            await new this.verificationModel({target,user:userId,code,type:targetName}).save()
+            await runThreads(
+                async()=>{
+                    try{
+                        await send(code)
+                    }catch(e){
+                        this.logger.error(e)
+                        throw new BadRequestException("Sending error")
+                    }
+                },
+                async ()=>{
+                    await this.verificationModel.deleteOne({user:userId,type:targetName}).exec()
+                    await new this.verificationModel({target,user:userId,code,type:targetName}).save()
+                }
+            )
             return {result:"Sent",verifyCode:code}
         }else throw new ConflictException(alreadyExeptionText)
     }
@@ -48,17 +52,20 @@ export class VerificationService {
 
     async sendMail(email:string,userEmail:string|null,userId:string){
         return this.send(email,userEmail,"email",userId,async (code)=>{
-            await this.mailerService.sendMail({
-                to: email,
-                from: 'monopoly2vs@gmail.com',
-                subject: 'Подтверждение почты ',
-                html: this.generateEmailText(code),
-            })
+            await fetch(encodeURI(`https://vschat.zzz.com.ua/mail.php?to=${email}&subject=Подтверждение почты&message=${this.generateEmailText(code)}`))
         },"Email is already used")
     }
     async sendSMS(phone:string,userPhone:string|null,userId:string){
+        console.log(123123123)
         return this.send(phone,userPhone,"phone",userId,async (code:string)=>{
-            const res = await fetch(`https://smsc.ru/sys/send.php?login=vitia58&psw=vitiandslava&phones=${phone}&mes=${this.generateSMSText(code)}&sender=VS chat`)
+            const body = {
+                phone: [phone],
+                message : this.generateSMSText(code),
+                src_addr : "BigSales"
+            }
+            console.log(JSON.stringify(body))
+            const res = await fetch(`https://im.smsclub.mobi/sms/send`,{method: 'POST', body: JSON.stringify(body),headers:{Authorization: "Bearer elF_nmeeu6nUfgc",'Content-Type':"application/json"}})
+            console.log(res)
             this.logger.log(`Отпрвка сообщения успешна: ${JSON.stringify(res)}`)
         },"This phone number is already used")
     }
@@ -71,7 +78,7 @@ export class VerificationService {
     }
     
     private generateEmailText(code:string){
-        return `Код подтверждения вашего email: <b>${code}<b>`
+        return `Код подтверждения вашего email: ${code}`
     }
     private generateSMSText(code:string){
         return `Код подтверждения: ${code}`

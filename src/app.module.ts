@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { AppController } from './app.controller';
@@ -16,6 +16,7 @@ import { VerificationModule } from './verification/verification.module';
 import { IdGeneratorModule } from './id-generator/id-generator.module';
 import { TransformersModule } from './transformers/transformers.module';
 import { ChatRolesModule } from './chat-roles/chat-roles.module';
+import { LoggerMiddleware } from './middlewares/logger.middleware';
 
 @Module({
   imports: [AuthModule,
@@ -43,4 +44,10 @@ import { ChatRolesModule } from './chat-roles/chat-roles.module';
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer
+      .apply(LoggerMiddleware)
+      .forRoutes('chat/*');
+  }
+}

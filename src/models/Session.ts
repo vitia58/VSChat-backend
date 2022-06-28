@@ -1,5 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
+import { hideTransform } from 'src/helpers/other.helper';
 import { User } from './User';
 
 export type SessionDocument = Session & Document;
@@ -23,10 +24,10 @@ export class Session {
   @Prop({default:[],transform:()=>undefined})
   deliverySocketBuffer:string[]
 
-  @Prop({transform:()=>undefined})
-  createdAt: Date;
-  @Prop({transform:()=>undefined})
-  updatedAt: Date;
+  @Prop(hideTransform)
+  createdAt: number;
+  @Prop(hideTransform)
+  updatedAt: number;
 }
 
 export const SessionSchema = SchemaFactory.createForClass(Session);

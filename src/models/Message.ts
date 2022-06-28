@@ -1,6 +1,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 import { FILES_URL } from 'src/helpers/constant';
+import { hideTransform } from 'src/helpers/other.helper';
 import { Chat } from './Chat';
 import { User } from './User';
 
@@ -29,8 +30,8 @@ export class Message {
   @Prop({default:null})
   reply:string|null
 
-  @Prop({default:null,transform:(v:string|null)=>v==null?undefined:v.replace("public_html/", `${FILES_URL}/`)})
-  file:string|null
+  @Prop({default:[],transform:(v:string[])=>(v??[]).map(f=>`${FILES_URL}/${f}`)})
+  file:string[]
 
   @Prop({enum:["voice","image","file",null],default:null})
   fileType:"voice"|"image"|"file"|null
@@ -38,10 +39,12 @@ export class Message {
   @Prop({transform:()=>undefined,default:true})
   shown: boolean;
   
-  @Prop({transform:()=>undefined})
-  createdAt: Date;
-  @Prop({transform:()=>undefined})
-  updatedAt: Date;
+  @Prop(hideTransform)
+  __v:number
+  @Prop(hideTransform)
+  createdAt: number;
+  @Prop(hideTransform)
+  updatedAt: number;
 }
 
 export const MessageSchema = SchemaFactory.createForClass(Message);

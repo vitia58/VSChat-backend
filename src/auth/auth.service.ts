@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { User, UserDocument } from '../models/User';
 import { FilterQuery, Model, Types } from 'mongoose';
@@ -14,6 +14,8 @@ import { CCreateSessionDTO } from './dto/CCreateSessionDTO';
 import { isEmail, isPhoneNumber } from 'class-validator';
 import { VerificationService } from 'src/verification/verification.service';
 import { IdGeneratorService } from 'src/id-generator/id-generator.service';
+import { ConfigService } from '@nestjs/config';
+import { CGoogleAuth } from './dto/CGoogleAuth';
 @Injectable()
 export class AuthService {
   constructor(
@@ -24,8 +26,7 @@ export class AuthService {
     private readonly documentService:DocumentsService,
     private readonly verificationService:VerificationService,
     private readonly idGen:IdGeneratorService,
-    ) {
-  }
+    ) {}
   private readonly logger = new Logger(AuthService.name);
 
   async validateUser(login:string,password:string):Promise<any>{
@@ -33,11 +34,68 @@ export class AuthService {
     if(user){
       const passwordEqual = await comparePassword(password, user.password);
       if(passwordEqual){
-        const {login,_id} = user
-        return {login,id:_id}
+        const {login,id} = user
+        return {login,id}
       }else throw new UnauthorizedException("")
     }
     return null
+  }
+
+  async google(google:CGoogleAuth){
+    const base64Url = google.token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(Buffer.from(base64, 'base64').toString("binary").split('').map(function(c) {
+        return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+    }).join(''));
+
+    const data:{
+      name:string
+      picture:string
+      email:string
+      email_verified:string
+    } = JSON.parse(jsonPayload);
+    console.log(data)
+    console.log(google.token)
+    if(!data.email_verified)throw new BadRequestException("Email isnt verified")
+
+    const user = await this.userModel.findOne({email:data.email}).exec()
+    const upload = (login:string,userImage:string="/logos/default.png")=>{
+      if(data.picture&&userImage.endsWith("logos/default.png")){
+        const path = `users/${login}/logos/${new Date().getTime()}.png`
+        this.documentService.uploadImageFromUrl(path,data.picture)
+        return path
+      }
+      return userImage
+    }
+    const success = async (user:UserDocument)=>{
+      const session_id = await this.createSession({userID:user._id})
+      const payload = {id:session_id}
+      const access_token = this.jwtService.sign(payload);
+      return {
+        access_token,
+        id:user._id
+      }
+    }
+    if(user){
+      await user.updateOne({image:upload(user.login,user.image)}).exec()
+      return await success(user)
+    }else{
+      let newLogin = "user";
+      do{
+        newLogin = "user"+(await this.idGen.generateIdForUser())
+      }while(await this.userModel.exists({login:newLogin}))
+      const color = this.documentService.generateRandomColor()
+      const userPayload:{[K in keyof User]?:User[K]} = {
+        login:newLogin,
+        password:"undefined",
+        userName:data.name,
+        image:upload(newLogin),
+        email:data.email,
+        color
+      };
+      const newUser = await new this.userModel(userPayload).save()
+      return await success(newUser)
+    }
   }
 
   async login(cLoginDTO:CLoginDTO){
@@ -50,7 +108,6 @@ export class AuthService {
       const access_token = this.jwtService.sign(payload);
       return {
         access_token,
-        // session_token,
         id:user.id
       }
     }else throw new UnauthorizedException("Данного пользователя с таким паролем не существует.")
@@ -95,7 +152,7 @@ export class AuthService {
       access_token,
       verification,
       // session_token,
-      id:user._id
+      id:user.id
     }
   }
 
